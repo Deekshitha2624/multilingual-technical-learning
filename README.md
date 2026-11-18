@@ -19,6 +19,12 @@ npm run dev
 
 Open http://localhost:3000. You can paste a lesson or upload one supported document: PDF, DOCX, PPTX, XLSX, CSV, TXT, or MD. The app extracts text in the server and places it in the editor so the teacher can review it and confirm approval before generation. The Gemini API key is used only on the server and must never be added to client-side code or committed.
 
+## Troubleshooting translation
+
+- If the page says the Gemini API key is missing, put `GEMINI_API_KEY=...` in `.env.local` for local development, then stop and restart `npm run dev`. On a hosted deployment, add `GEMINI_API_KEY` in the host's server-side environment-variable settings and redeploy.
+- `GEMINI_MODEL` defaults to `gemini-2.5-flash`; make sure the model is available to your API key. You can set `GEMINI_MODEL` in the same environment.
+- The page now shows the error returned by the backend instead of hiding it. For provider/network errors, check the terminal running Next.js or your host's function logs. Never share or commit your API key.
+
 ## Features in this MVP
 
 - Generate draft versions in English, Marathi, and Hindi from one source lesson using the Gemini API.

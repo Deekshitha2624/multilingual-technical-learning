@@ -47,13 +47,14 @@ export default function Home() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ lesson, terms: terms.split(',').map((term) => term.trim()).filter(Boolean) }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Could not generate lesson drafts.');
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error || `Generation failed (HTTP ${response.status}). Check the server configuration and try again.`);
+      if (!data?.drafts?.English || !data?.drafts?.Marathi || !data?.drafts?.Hindi) throw new Error('The server response did not contain all three language drafts. Please try again.');
       setDrafts(data.drafts);
       setSelected('English');
       setNotice('Drafts created. Review and edit each language before marking them approved.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong.');
+      setError(e instanceof Error ? e.message : 'Could not contact the generation service. Check your connection and try again.');
     } finally { setBusy(false); }
   }
 
