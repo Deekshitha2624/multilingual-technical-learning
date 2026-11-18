@@ -5,6 +5,7 @@ import { ChangeEvent, useRef, useState } from 'react';
 type Language = 'English' | 'Marathi' | 'Hindi';
 type Drafts = Record<Language, string>;
 const languages: Language[] = ['English', 'Marathi', 'Hindi'];
+const supportedFiles = '.pdf,.docx,.pptx,.xlsx,.csv,.txt,.md';
 
 export default function Home() {
   const [lesson, setLesson] = useState('');
@@ -13,6 +14,7 @@ export default function Home() {
   const [drafts, setDrafts] = useState<Drafts | null>(null);
   const [selected, setSelected] = useState<Language>('English');
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -20,15 +22,22 @@ export default function Home() {
   async function loadFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (!/\.(txt|md)$/i.test(file.name)) {
-      setError('For this MVP, upload a .txt or .md lesson file.');
+    setUploading(true); setError(''); setNotice('');
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch('/api/extract', { method: 'POST', body: formData });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not read this file.');
+      setLesson(data.text);
+      setApproved(false);
+      setNotice(`${data.fileName} loaded. Review the extracted text and confirm approval before generating.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong while reading the file.');
+    } finally {
+      setUploading(false);
       event.target.value = '';
-      return;
     }
-    setLesson(await file.text());
-    setError('');
-    setNotice(`${file.name} loaded. Review it and confirm approval before generating.`);
-    setApproved(false);
   }
 
   async function generate() {
@@ -70,12 +79,13 @@ export default function Home() {
       <section className="workspace">
         <div className="panel source-panel">
           <div className="panel-heading"><div><div className="step">STEP 01</div><h2>Your approved lesson</h2></div><span className="status"><span className="dot" /> SOURCE</span></div>
-          <p className="helper">Paste a lesson or upload a text/Markdown file. Only use content approved by your teacher.</p>
+          <p className="helper">Paste a lesson or upload a supported document. Only use content approved by your teacher.</p>
           <textarea className="source-input" value={lesson} onChange={(e) => { setLesson(e.target.value); setApproved(false); }} placeholder={'Paste your technical lesson here…\n\nExample: The area of a circle is A = πr². If r = 7 cm, then A = 49π cm².'} aria-label="Approved lesson content" />
-          <div className="source-footer"><button className="text-button" onClick={() => fileRef.current?.click()}><span>↑</span> Upload .txt / .md</button><input ref={fileRef} hidden type="file" accept=".txt,.md,text/plain,text/markdown" onChange={loadFile} /><span>{lesson.length} characters</span></div>
+          <div className="source-footer"><button className="text-button" onClick={() => fileRef.current?.click()} disabled={uploading}><span>↑</span> {uploading ? 'Reading file…' : 'Upload a file'}</button><input ref={fileRef} hidden type="file" accept={supportedFiles} onChange={loadFile} /><span>{lesson.length} characters · Max file size 10 MB</span></div>
+          <p className="file-help">PDF · DOCX · PPTX · XLSX · CSV · TXT · MD</p>
           <label className="approval-check"><input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} /><span className="fake-check" /><span>I confirm this lesson has been reviewed and approved by a teacher.</span></label>
           <div className="terms-block"><label htmlFor="terms">KEEP THESE ENGLISH TERMS AS WRITTEN <span>OPTIONAL</span></label><input id="terms" value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="e.g. photosynthesis, voltage, Newton’s law" /><small>Separate terms with commas. Formulas and quantities are protected automatically.</small></div>
-          <button className="generate-button" disabled={!lesson.trim() || !approved || busy} onClick={generate}>{busy ? <><span className="spinner" /> Creating drafts…</> : <>Generate learning materials <span>↗</span></>}</button>
+          <button className="generate-button" disabled={!lesson.trim() || !approved || busy || uploading} onClick={generate}>{busy ? <><span className="spinner" /> Creating drafts…</> : <>Generate learning materials <span>↗</span></>}</button>
           <p className="privacy-note"><span>◇</span> Your lesson is sent to the configured AI provider to create drafts.</p>
         </div>
         <div className="panel output-panel">
