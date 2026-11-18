@@ -28,6 +28,9 @@ Storage is a JSON file (`LESSON_DB_PATH`, default `./data/lessons.json`). This i
 
 ## Using the app
 
-The current web interface supports uploads, generation and editing drafts. The teacher workflow and student published view are available through the API endpoints above.
+- **Drafts:** generate, then switch between English, Marathi and Hindi. Select text in a draft to listen to just that passage (uses the browser's built-in speech; install a Marathi or Hindi voice on the device for those languages).
+- **Glossary:** key terms with Marathi and Hindi equivalents. Click a term to find it in the current draft.
+- **Teacher:** enter the teacher token and your name. Edit a draft, save it, approve each language, then publish. Students only see the published version.
+- **Student view:** open a lesson by its ID to see the published version in all three languages.
 
 Quality note: translations from the real Gemini model require review by a teacher, especially for technical terminology and Marathi/Hindi accuracy.
