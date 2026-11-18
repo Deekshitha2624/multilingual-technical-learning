@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 export const maxDuration = 30;
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const MAX_TEXT_LENGTH = 30_000;
+const MAX_TEXT_LENGTH = 1_000_000;
 const allowedExtensions = new Set(['pdf', 'docx', 'pptx', 'xlsx', 'csv', 'txt', 'md']);
 
 function extensionOf(name: string) {
@@ -16,12 +16,7 @@ function extensionOf(name: string) {
 }
 
 function decodeXml(value: string) {
-  return value
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
+  return value.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
 }
 
 async function extractPptx(buffer: Buffer) {
@@ -33,7 +28,7 @@ async function extractPptx(buffer: Buffer) {
   for (const fileName of slideFiles) {
     const xml = await zip.files[fileName].async('text');
     const paragraphs = Array.from(xml.matchAll(/<a:p[\s>][\s\S]*?<\/a:p>/g))
-      .map((para) => Array.from(para[0].matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)).map((match) => decodeXml(match[1])).join(''))
+      .map((paragraph) => Array.from(paragraph[0].matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)).map((match) => decodeXml(match[1])).join(''))
       .filter((line) => line.trim());
     if (paragraphs.length) slides.push(paragraphs.join('\n'));
   }
@@ -58,39 +53,21 @@ export async function POST(request: Request) {
     if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: 'Files must be 10 MB or smaller.' }, { status: 413 });
 
     const extension = extensionOf(file.name);
-    if (!allowedExtensions.has(extension)) {
-      return NextResponse.json({ error: 'Unsupported file type. Use PDF, DOCX, PPTX, XLSX, CSV, TXT, or MD.' }, { status: 415 });
-    }
+    if (!allowedExtensions.has(extension)) return NextResponse.json({ error: 'Unsupported file type. Use PDF, DOCX, PPTX, XLSX, CSV, TXT, or MD.' }, { status: 415 });
 
     const buffer = Buffer.from(await file.arrayBuffer());
     let text: string;
     switch (extension) {
-      case 'pdf': {
-        const parsed = await pdfParse(buffer);
-        text = parsed.text;
-        break;
-      }
-      case 'docx':
-        text = (await mammoth.extractRawText({ buffer })).value;
-        break;
-      case 'pptx':
-        text = await extractPptx(buffer);
-        break;
-      case 'xlsx':
-        text = await extractXlsx(buffer);
-        break;
-      default:
-        text = buffer.toString('utf8');
+      case 'pdf': text = (await pdfParse(buffer)).text; break;
+      case 'docx': text = (await mammoth.extractRawText({ buffer })).value; break;
+      case 'pptx': text = await extractPptx(buffer); break;
+      case 'xlsx': text = await extractXlsx(buffer); break;
+      default: text = buffer.toString('utf8');
     }
 
     text = text.replace(/\u0000/g, '').trim();
-    if (!text) {
-      return NextResponse.json({ error: extension === 'pdf' ? 'No selectable text was found in this PDF. Scanned PDFs need OCR; paste the lesson text for now.' : 'No readable text was found in this file.' }, { status: 400 });
-    }
-    if (text.length > MAX_TEXT_LENGTH) {
-      return NextResponse.json({ error: `This file contains more than ${MAX_TEXT_LENGTH.toLocaleString()} characters. Split it into smaller files and upload one at a time.` }, { status: 413 });
-    }
-
+    if (!text) return NextResponse.json({ error: extension === 'pdf' ? 'No selectable text was found in this PDF. Scanned PDFs need OCR; paste the lesson text for now.' : 'No readable text was found in this file.' }, { status: 400 });
+    if (text.length > MAX_TEXT_LENGTH) return NextResponse.json({ error: `This file contains more than ${MAX_TEXT_LENGTH.toLocaleString()} characters. Split it into smaller files and upload one at a time.` }, { status: 413 });
     return NextResponse.json({ text, fileName: file.name });
   } catch {
     return NextResponse.json({ error: 'Could not read this file. Check that it is a valid, unencrypted supported document.' }, { status: 400 });
