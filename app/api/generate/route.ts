@@ -38,9 +38,11 @@ function restore(text: string, items: string[]) {
 }
 
 export async function POST(request: Request) {
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json({ error: 'AI generation is not configured yet. Add OPENAI_API_KEY to your environment (see .env.example). Your lesson is safe; no request was sent.' }, { status: 503 });
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json({ error: 'Gemini is not configured yet. Add GEMINI_API_KEY to your environment (see .env.example). Your lesson is safe; no request was sent.' }, { status: 503 });
   }
+
   try {
     const body = await request.json();
     const lesson = typeof body.lesson === 'string' ? body.lesson.trim() : '';
@@ -50,14 +52,21 @@ export async function POST(request: Request) {
 
     const { text: protectedLesson, protectedItems } = protect(lesson, terms);
     const system = `You are an educational writing assistant. Create accurate, age-appropriate technical learning material from the supplied teacher-approved source. Return ONLY valid JSON with exactly these string keys: English, Marathi, Hindi. Keep the same facts, order, and learning objectives. Do not invent facts or omit important information. Preserve all ⟦KEEP_n⟧ tokens exactly, each once, in the appropriate position; these represent formulas, quantities, units, or teacher-specified English terms. English should be clear and accessible, Marathi should be in natural Devanagari Marathi, and Hindi should be in natural Devanagari Hindi. Keep technical English terms when already specified. Format with readable paragraphs and bullets when useful.`;
-    const completion = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: process.env.OPENAI_MODEL || 'gpt-4o-mini', temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: system }, { role: 'user', content: `Create the three versions from this source. Return JSON only.\n\n${protectedLesson}` }] }),
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const completion = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: 'user', parts: [{ text: `Create the three versions from this source. Return JSON only.\n\n${protectedLesson}` }] }],
+        generationConfig: { temperature: 0.2, responseMimeType: 'application/json', maxOutputTokens: 8192 },
+      }),
     });
     const result = await completion.json();
-    if (!completion.ok) return NextResponse.json({ error: result.error?.message || 'The AI provider could not generate drafts.' }, { status: completion.status >= 400 && completion.status < 500 ? 502 : 503 });
-    const content = result.choices?.[0]?.message?.content;
-    if (!content) return NextResponse.json({ error: 'The AI provider returned an empty response. Please try again.' }, { status: 502 });
+    if (!completion.ok) return NextResponse.json({ error: result.error?.message || 'Gemini could not generate drafts. Check your API key and model configuration.' }, { status: 502 });
+
+    const content = result.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || '').join('');
+    if (!content) return NextResponse.json({ error: 'Gemini returned an empty response. Please try again.' }, { status: 502 });
     const parsed = JSON.parse(content);
     const drafts: Record<string, string> = {};
     for (const language of ['English', 'Marathi', 'Hindi']) {
