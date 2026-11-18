@@ -1,25 +1,27 @@
 import { NextResponse } from 'next/server';
-import { LANGUAGES } from '../../../../lib/protect';
-import { getLesson, updateLesson } from '../../../../lib/store';
-import { isTeacher } from '../../../../lib/teacher';
+import { LANGUAGES } from '../../../../../lib/protect';
+import { updateLesson } from '../../../../../lib/store';
+import { requireTeacher } from '../../../../../lib/auth';
 
-type Context = { params: { id: string } };
+export const runtime = 'nodejs';
 
-export async function POST(request: Request, { params }: Context) {
-  if (!isTeacher(request)) return NextResponse.json({ error: 'A valid x-teacher-token is required.' }, { status: 401 });
-  const lesson = await getLesson(params.id);
-  if (!lesson) return NextResponse.json({ error: 'Lesson not found.' }, { status: 404 });
-  const unapproved = LANGUAGES.filter((language) => !lesson.approvals[language]?.approved);
-  if (unapproved.length) return NextResponse.json({ error: `Approve every language before publishing: ${unapproved.join(', ')}.` }, { status: 409 });
+export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const denied = requireTeacher(request);
+  if (denied) return denied;
 
-  const updated = await updateLesson(params.id, (record) => {
-    record.published = {
+  const result = await updateLesson(params.id, (lesson) => {
+    const missing = LANGUAGES.filter((language) => !lesson.approved[language]);
+    if (missing.length) return `Approve every language before publishing. Not yet approved: ${missing.join(', ')}.`;
+    lesson.publishedVersion += 1;
+    lesson.published = {
+      version: lesson.publishedVersion,
       publishedAt: new Date().toISOString(),
-      drafts: { ...record.drafts },
-      glossary: [...record.glossary],
+      drafts: { ...lesson.current },
+      glossary: lesson.glossary,
     };
-    return record.published;
   });
-  if (!updated) return NextResponse.json({ error: 'Lesson not found.' }, { status: 404 });
-  return NextResponse.json({ id: updated.record.id, published: updated.result });
+
+  if (result.notFound) return NextResponse.json({ error: 'Lesson not found.' }, { status: 404 });
+  if (result.error) return NextResponse.json({ error: result.error }, { status: 409 });
+  return NextResponse.json({ published: result.lesson!.published });
 }

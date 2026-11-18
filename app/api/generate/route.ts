@@ -52,6 +52,6 @@ export async function POST(request: Request) {
   for (const language of LANGUAGES) drafts[language] = results.map((result) => result[language]).join('\n\n');
   const checks = LANGUAGES.map((language) => checkDraft(lesson, drafts[language], language));
   const warnings = [...describeChecks(checks), ...glossaryWarnings];
-  const record = await createLesson({ source: lesson, terms, model, generated: drafts, warnings, glossary, sections: chunks.length });
+  const record = await createLesson({ source: lesson, terms, model, generated: drafts, warnings, glossary });
   return NextResponse.json({ id: record.id, drafts, checks, warnings, glossary, sections: chunks.length });
 }

@@ -1,38 +1,47 @@
 import { NextResponse } from 'next/server';
-import { LANGUAGES } from '../../../../lib/protect';
-import { checkDraft } from '../../../../lib/fidelity';
-import { getLesson, updateLesson, type Language } from '../../../../lib/store';
-import { isTeacher } from '../../../../lib/teacher';
+import { LANGUAGES, type Language } from '../../../../../lib/protect';
+import { checkDraft, describeChecks } from '../../../../../lib/fidelity';
+import { updateLesson } from '../../../../../lib/store';
+import { requireTeacher } from '../../../../../lib/auth';
 
-type Context = { params: { id: string } };
+export const runtime = 'nodejs';
+const MAX_CORRECTION = 60_000;
 
-export async function POST(request: Request, { params }: Context) {
-  if (!isTeacher(request)) return NextResponse.json({ error: 'A valid x-teacher-token is required.' }, { status: 401 });
-  let body: Record<string, unknown>;
-  try {
-    const value: unknown = await request.json();
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error();
-    body = value as Record<string, unknown>;
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
-  }
+export async function POST(request: Request, { params }: { params: { id: string } }) {
+  const denied = requireTeacher(request);
+  if (denied) return denied;
 
-  const language = body.language;
+  let body: { language?: unknown; text?: unknown; teacher?: unknown; note?: unknown; approve?: unknown };
+  try { body = await request.json(); } catch { return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 }); }
+
+  const language = body.language as Language;
+  if (!LANGUAGES.includes(language)) return NextResponse.json({ error: 'language must be English, Marathi or Hindi.' }, { status: 400 });
   const text = typeof body.text === 'string' ? body.text.trim() : '';
-  const teacher = typeof body.teacher === 'string' ? body.teacher.trim().slice(0, 120) : '';
-  const note = typeof body.note === 'string' ? body.note.trim().slice(0, 1000) : '';
-  if (!LANGUAGES.includes(language as Language) || !text || !teacher) {
-    return NextResponse.json({ error: 'Provide a supported language, non-empty text, and teacher name.' }, { status: 400 });
-  }
+  if (!text) return NextResponse.json({ error: 'The corrected text cannot be empty.' }, { status: 400 });
+  if (text.length > MAX_CORRECTION) return NextResponse.json({ error: `Corrections are limited to ${MAX_CORRECTION.toLocaleString()} characters.` }, { status: 413 });
+  const teacher = typeof body.teacher === 'string' && body.teacher.trim() ? body.teacher.trim().slice(0, 120) : 'Teacher';
+  const note = typeof body.note === 'string' ? body.note.trim().slice(0, 500) : '';
+  const approve = body.approve === true;
 
-  const updated = await updateLesson(params.id, (record) => {
-    const selected = language as Language;
-    const check = checkDraft(record.source, text, selected);
-    record.drafts[selected] = text;
-    record.approvals[selected] = body.approve === true ? { approved: true, teacher, approvedAt: new Date().toISOString() } : null;
-    record.corrections.push({ language: selected, text, teacher, note, createdAt: new Date().toISOString(), check });
-    return check;
+  const result = await updateLesson(params.id, (lesson) => {
+    const previous = lesson.current[language];
+    lesson.current[language] = text;
+    lesson.approved[language] = approve;
+    lesson.corrections.push({
+      id: `cor_${lesson.corrections.length + 1}`,
+      language,
+      previous,
+      text,
+      teacher,
+      note,
+      createdAt: new Date().toISOString(),
+    });
+    const check = checkDraft(lesson.source, text, language);
+    lesson.warnings = [...lesson.warnings.filter((warning) => !warning.startsWith(`${language}:`)), ...describeChecks([check])];
   });
-  if (!updated) return NextResponse.json({ error: 'Lesson not found.' }, { status: 404 });
-  return NextResponse.json({ lesson: updated.record, check: updated.result });
+
+  if (result.notFound) return NextResponse.json({ error: 'Lesson not found.' }, { status: 404 });
+  if (result.error) return NextResponse.json({ error: result.error }, { status: 400 });
+  const check = checkDraft(result.lesson!.source, text, language);
+  return NextResponse.json({ lesson: result.lesson, check });
 }
