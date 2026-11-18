@@ -32,8 +32,10 @@ async function extractPptx(buffer: Buffer) {
   const slides: string[] = [];
   for (const fileName of slideFiles) {
     const xml = await zip.files[fileName].async('text');
-    const text = [...xml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map((match) => decodeXml(match[1])).join('');
-    if (text.trim()) slides.push(text.trim());
+    const paragraphs = Array.from(xml.matchAll(/<a:p[\s>][\s\S]*?<\/a:p>/g))
+      .map((para) => Array.from(para[0].matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)).map((match) => decodeXml(match[1])).join(''))
+      .filter((line) => line.trim());
+    if (paragraphs.length) slides.push(paragraphs.join('\n'));
   }
   return slides.map((slide, index) => `Slide ${index + 1}\n${slide}`).join('\n\n');
 }
@@ -83,7 +85,7 @@ export async function POST(request: Request) {
 
     text = text.replace(/\u0000/g, '').trim();
     if (!text) {
-      return NextResponse.json({ error: extension === 'pdf' ? 'No selectable text was found in this PDF. Scanned PDFs need OCR; paste the lesson text for now.' : 'No readable text was found in this file.' }, { status: 422 });
+      return NextResponse.json({ error: extension === 'pdf' ? 'No selectable text was found in this PDF. Scanned PDFs need OCR; paste the lesson text for now.' : 'No readable text was found in this file.' }, { status: 400 });
     }
     if (text.length > MAX_TEXT_LENGTH) {
       return NextResponse.json({ error: `This file contains more than ${MAX_TEXT_LENGTH.toLocaleString()} characters. Split it into smaller files and upload one at a time.` }, { status: 413 });
