@@ -43,7 +43,7 @@ textarea:focus,input:focus { border-color:#84a896; box-shadow:0 0 0 3px rgba(74,
 .terms-block input { width:100%; border:1px solid #e7ebe6; padding:10px 11px; border-radius:6px; color:#39483f; outline:none; font-size:11px; }
 .terms-block input::placeholder { color:#aab2ad; }.terms-block small { display:block; font-size:9px; color:#929d96; margin-top:6px; }
 .generate-button { display:flex; justify-content:space-between; align-items:center; width:100%; border:0; margin-top:19px; background:#245c48; color:white; padding:13px 15px; border-radius:7px; font-size:11px; font-weight:700; }
-.generate-button:hover:not(:disabled) { background:#194a38; transform:translateY(-1px); }.generate-button:disabled { opacity:.48; cursor-notallowed:; }.generate-button span:last-child { font-size:16px; }
+.generate-button:hover:not(:disabled) { background:#194a38; transform:translateY(-1px); }.generate-button:disabled { opacity:.48; cursor:not-allowed; }.generate-button span:last-child { font-size:16px; }
 .privacy-note { font-size:9px; color:#98a29c; text-align:center; margin:12px 0 0; }.privacy-note span { font-size:14px; vertical-align:-1px; padding-right:3px; }
 .tabs { display:flex; gap:5px; border-bottom:1px solid #e9ece8; margin-top:19px; }
 .tab { background:none; border:0; border-bottom:2px solid transparent; padding:10px 11px; margin-bottom:-1px; color:#87928b; font-size:11px; }.tab.active { border-bottom-color:#397354; color:#315d45; font-weight:700; }.tab-check { margin-left:6px; font-size:9px; color:#a0aaa4; }
