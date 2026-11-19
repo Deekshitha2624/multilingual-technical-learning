@@ -8,29 +8,19 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Add `GEMINI_API_KEY` to `.env.local`. Set `TEACHER_TOKEN` to a long, random secret for teacher corrections and publishing. On a hosted deployment, add both secrets to the server environment and redeploy. Set `GEMINI_MODEL=gemini-2.5-flash` unless you have another available model.
+Add `GEMINI_API_KEY` to `.env.local`. Set `GEMINI_MODEL=gemini-2.5-flash` unless you have another model. Set `TEACHER_TOKEN` to a long random value for corrections and publishing.
 
-## Supported uploads and lesson limits
+## Large document generation
 
-PDF, DOCX, PPTX, XLSX, CSV, TXT, and MD files up to 10 MB. Scanned PDFs require OCR. Extracted lessons may contain up to 1,000,000 characters.
+- The generation API is asynchronous. `POST /api/generate` creates a persistent job and returns immediately with `id` and `lessonId`.
+- Poll `GET /api/generate/status/{id}` for separate English, Marathi and Hindi chunk progress.
+- Call `POST /api/generate/process/{id}` repeatedly to process one pending chunk or retry a glossary task. The UI does this automatically. This keeps browser and gateway requests short and avoids 504 responses.
+- Long lessons are split by paragraphs and sentences into 3,500-character sections. Processing is saved after every chunk; completed chunks are never regenerated.
+- POST `{ "retry": true }` to retry all failed chunks and glossary work. POST `{ "retry": true, "language": "Hindi", "chunk": 3 }` retries one chunk.
+- Use `GENERATION_JOBS_PATH` to override the job JSON file location. It defaults to `./data/generation-jobs.json`.
 
-Long lessons are split into sections of about 3,500 characters and translated four at a time. Formulas, quantities, units and teacher-listed terms are protected in each section and restored after translation. A fidelity check returns warnings for missing or added numbers and missing formulas; warnings do not block drafts.
+Generation jobs and lessons use local JSON files. This is reliable for local development and a persistent single server. It is not durable across ephemeral serverless disks; use a database for horizontally scaled or serverless production deployments.
 
-## Teacher workflow API
+## Supported uploads
 
-Generation saves a lesson and returns its `id`. Students only see a published snapshot.
-
-- `GET /api/lessons/{id}`: public view of the published version. Send `x-teacher-token` to get the full working record.
-- `POST /api/lessons/{id}/corrections`: teacher-only. Send `x-teacher-token` and JSON `{ "language": "Marathi", "text": "...", "teacher": "...", "note": "...", "approve": true }`. Saves the correction, runs a fidelity check and optionally approves that language.
-- `POST /api/lessons/{id}/publish`: teacher-only. Send `x-teacher-token`. All three languages must be approved; publication snapshots the drafts and glossary.
-
-Storage is a JSON file (`LESSON_DB_PATH`, default `./data/lessons.json`). This is suitable for a persistent single server, but not serverless hosts with ephemeral or shared filesystem storage; use a database for those deployments. Set a strong private teacher token and do not expose it in browser code or public client bundles.
-
-## Using the app
-
-- **Drafts:** generate, then switch between English, Marathi and Hindi. Select text in a draft to listen to just that passage (uses the browser's built-in speech; install a Marathi or Hindi voice on the device for those languages).
-- **Glossary:** key terms with Marathi and Hindi equivalents. Click a term to find it in the current draft.
-- **Teacher:** enter the teacher token and your name. Edit a draft, save it, approve each language, then publish. Students only see the published version.
-- **Student view:** open a lesson by its ID to see the published version in all three languages.
-
-Quality note: translations from the real Gemini model require review by a teacher, especially for technical terminology and Marathi/Hindi accuracy.
+PDF, DOCX, PPTX, XLSX, CSV, TXT and MD up to 10 MB. Extracted text supports up to 1,000,000 characters.
