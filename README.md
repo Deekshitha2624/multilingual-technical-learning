@@ -12,14 +12,15 @@ Add `GEMINI_API_KEY` to `.env.local`. Set `GEMINI_MODEL=gemini-2.5-flash` unless
 
 ## Large document generation
 
-- The generation API is asynchronous. `POST /api/generate` creates a persistent job and returns immediately with `id` and `lessonId`.
-- Poll `GET /api/generate/status/{id}` for separate English, Marathi and Hindi chunk progress.
-- Call `POST /api/generate/process/{id}` repeatedly to process one pending chunk or retry a glossary task. The UI does this automatically. This keeps browser and gateway requests short and avoids 504 responses.
-- Long lessons are split by paragraphs and sentences into 3,500-character sections. Processing is saved after every chunk; completed chunks are never regenerated.
-- POST `{ "retry": true }` to retry all failed chunks and glossary work. POST `{ "retry": true, "language": "Hindi", "chunk": 3 }` retries one chunk.
-- Use `GENERATION_JOBS_PATH` to override the job JSON file location. It defaults to `./data/generation-jobs.json`.
+- `POST /api/generate` immediately creates a persistent lesson and chunk job, then returns a job ID.
+- The UI polls `GET /api/generate/status/{id}` and calls `POST /api/generate/process/{id}` in short steps. A browser or gateway request does not wait for all chunks.
+- Long lessons are split by paragraphs and sentences into 3,500-character sections and saved after every completed chunk.
+- English, Marathi and Hindi have separate progress counts. Completed chunks are not regenerated.
+- Transient Gemini failures are retried internally. `POST /api/generate/process/{id}` with `{ "retry": true }` retries every failed chunk; language plus chunk fields retry one chunk.
+- Gemini chunk calls have a 25-second client timeout. Route processing is kept short and resumable instead of relying on a 50-second or 300-second route timeout.
+- Set `GENERATION_JOBS_PATH` to override the job JSON location. It defaults to `./data/generation-jobs.json`.
 
-Generation jobs and lessons use local JSON files. This is reliable for local development and a persistent single server. It is not durable across ephemeral serverless disks; use a database for horizontally scaled or serverless production deployments.
+Jobs and lessons use local JSON files. This is suitable for local development and persistent single-server deployments. Serverless or horizontally scaled production should use a shared database.
 
 ## Supported uploads
 

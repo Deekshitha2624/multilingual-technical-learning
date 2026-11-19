@@ -25,7 +25,7 @@ async function callGemini(protectedChunk: string, language: keyof Drafts, apiKey
     response = await fetch(`${base}/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
       headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(25_000),
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: SYSTEM }] },
         contents: [{ role: 'user', parts: [{ text: `Translate this section into ${language}. The preceding section is context only; do not repeat it.\n\nContext:\n${context || '(first section)'}\n\nSection:\n${protectedChunk}\n\nReturn JSON only: {"${language}": "..."}` }] }],
@@ -33,7 +33,7 @@ async function callGemini(protectedChunk: string, language: keyof Drafts, apiKey
       }),
     });
   } catch {
-    throw new GenerationError('Could not reach Gemini. The failed chunk can be retried.', 502, true);
+    throw new GenerationError('Could not reach Gemini within 25 seconds. The failed chunk can be retried.', 502, true);
   }
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -47,7 +47,6 @@ async function callGemini(protectedChunk: string, language: keyof Drafts, apiKey
 
 export async function translateLanguageChunk(chunk: string, language: keyof Drafts, terms: string[], apiKey: string, model: string, context = ''): Promise<string> {
   const { text: protectedChunk, items } = protect(chunk, terms);
-  const maxAttempts = 3;
   for (let attempt = 1; ; attempt++) {
     try {
       const cleaned = (await callGemini(protectedChunk, language, apiKey, model, context)).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -59,8 +58,8 @@ export async function translateLanguageChunk(chunk: string, language: keyof Draf
       return restored;
     } catch (error) {
       const failure = error instanceof GenerationError ? error : new GenerationError('Unexpected generation error.', 500, false);
-      if (!failure.retryable || attempt >= maxAttempts) throw failure;
-      await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+      if (!failure.retryable || attempt >= 3) throw failure;
+      await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
     }
   }
 }

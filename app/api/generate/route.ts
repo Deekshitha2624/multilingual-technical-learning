@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
 import { LANGUAGES, type Drafts } from '../../../lib/protect';
-import { checkDraft, describeChecks } from '../../../lib/fidelity';
 import { splitIntoChunks } from '../../../lib/chunk';
-import { createLesson, updateLesson } from '../../../lib/store';
-import { buildGlossary } from '../../../lib/glossary';
+import { createLesson } from '../../../lib/store';
 import { createGenerationJob, emptyJobLanguage } from '../../../lib/jobs';
 
 export const runtime = 'nodejs';
@@ -20,7 +18,7 @@ export async function POST(request: Request) {
   let body: { lesson?: unknown; terms?: unknown };
   try { body = await request.json(); } catch { return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 }); }
   const lesson = typeof body.lesson === 'string' ? body.lesson.trim() : '';
-  const terms = Array.isArray(body.terms) ? body.terms.filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter(Boolean).slice(0, MAX_TERMS) : [];
+  const terms = Array.isArray(body.terms) ? body.terms.filter((term): term is string => typeof term === 'string').map((term) => term.trim()).filter(Boolean).slice(0, MAX_TERMS) : [];
   if (!lesson) return NextResponse.json({ error: 'Provide a lesson with some text.' }, { status: 400 });
   if (lesson.length > MAX_LESSON_LENGTH) return NextResponse.json({ error: `The lesson is ${lesson.length.toLocaleString()} characters. The limit is ${MAX_LESSON_LENGTH.toLocaleString()} characters.` }, { status: 413 });
 
@@ -30,19 +28,7 @@ export async function POST(request: Request) {
   for (const language of LANGUAGES) placeholders[language] = '';
 
   const lessonRecord = await createLesson({ source: lesson, terms, model, generated: placeholders, warnings: [], glossary: [], sections: chunks.length });
-  const job = await createGenerationJob({
-    lessonId: lessonRecord.id,
-    source: lesson,
-    terms,
-    model,
-    chunks: chunks.map((source, index) => ({
-      index,
-      source,
-      English: emptyJobLanguage(),
-      Marathi: emptyJobLanguage(),
-      Hindi: emptyJobLanguage(),
-    })),
-  });
+  const job = await createGenerationJob({ lessonId: lessonRecord.id, source: lesson, terms, model, chunks: chunks.map((source, index) => ({ index, source, English: emptyJobLanguage(), Marathi: emptyJobLanguage(), Hindi: emptyJobLanguage() })) });
 
   return NextResponse.json({ id: job.id, lessonId: lessonRecord.id, sections: chunks.length, status: job.status });
 }
